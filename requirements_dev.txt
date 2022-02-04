@@ -241,7 +241,7 @@ toml==0.10.2
     #   pylint
 typed-ast==1.4.2
     # via black
-urllib3==1.26.2
+urllib3==1.26.3
     # via
     #   botocore
     #   requests
