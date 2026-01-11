@@ -1,0 +1,22 @@
+FROM percona/percona-xtrabackup:8.0
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+USER root
+
+RUN if command -v microdnf >/dev/null 2>&1; then \
+      microdnf --setopt=cachedir=/tmp/dnf install -y bzip2 gzip tar openssh-clients gnupg2 && microdnf clean all; \
+    elif command -v dnf >/dev/null 2>&1; then \
+      dnf -y install bzip2 gzip tar openssh-clients gnupg2 && dnf clean all; \
+    elif command -v yum >/dev/null 2>&1; then \
+      yum -y install bzip2 gzip tar openssh-clients gnupg2 && yum clean all; \
+    elif command -v apt-get >/dev/null 2>&1; then \
+      apt-get update && apt-get install -y --no-install-recommends \
+        bzip2 gzip tar openssh-client gpg && rm -rf /var/lib/apt/lists/*; \
+    else \
+      echo "No supported package manager found" >&2; exit 1; \
+    fi
+
+USER mysql
+
+WORKDIR /work

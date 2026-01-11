@@ -1,0 +1,18 @@
+uuid = 3a8ef01d-ef43-11f0-82ba-16358a703150
+name = 
+tool_name = xtrabackup
+tool_command = --defaults-file=/work/tests/integration/my.cnf --stream=xbstream --host=127.0.0.1 --backup --target-dir .
+tool_version = 8.0.35-34
+ibbackup_version = 8.0.35-34
+server_version = 8.0.44-35
+start_time = 2026-01-11 23:14:05
+end_time = 2026-01-11 23:14:07
+lock_time = 0
+binlog_pos = filename 'mysql-bin.000046', position '197', GTID of the last change '38d866f6-eea0-11f0-9449-c2b1e3968736:1-30'
+innodb_from_lsn = 0
+innodb_to_lsn = 30332370
+partial = N
+incremental = N
+format = xbstream
+compressed = N
+encrypted = N

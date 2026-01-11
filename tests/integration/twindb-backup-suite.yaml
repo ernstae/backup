@@ -1,0 +1,97 @@
+version: 1
+paths:
+  state_dir: /tmp/twindb-backup/state
+  lock_file: /tmp/twindb-backup/lock
+
+source:
+  backup_dirs:
+    - /work/tests/integration/sample_dir
+  tar_options: ""
+  backup_mysql: true
+
+mysql:
+  defaults_file: /work/tests/integration/my.cnf
+  mysql_binary: mysql
+  mysqlbinlog_binary: mysqlbinlog
+  xtrabackup_binary: xtrabackup
+  xbcloud_binary: /work/tests/integration/xbcloud-mock.sh
+  xbstream_binary: xbstream
+  full_backup: daily
+  expire_log_days: 7
+  capture_runtime_config: true
+
+backup:
+  intervals:
+    hourly: true
+    daily: true
+    weekly: false
+    monthly: false
+    yearly: false
+
+compression:
+  method: gzip
+  level: 6
+  threads: 1
+
+encryption:
+  gpg:
+    enabled: true
+    recipient: backup@twindb.local
+    keyring: /work/tests/integration/_gpg/pubring.kbx
+    secret_keyring: /work/tests/integration/_gpg/private-keys-v1.d
+    binary: gpg
+
+destination:
+  kind: ssh
+  provider: s3
+  remote_path: /data/backups
+  keep_local_path: ""
+
+s3:
+  bucket: mock-bucket
+  region: us-east-1
+  access_key: mock
+  secret_key: mock
+  endpoint: ""
+
+azure:
+  connection_string: ""
+  container: ""
+
+gcs:
+  bucket: mock-bucket
+  credentials_file: ""
+  gsutil_binary: /work/tests/integration/gsutil-mock.sh
+
+ssh:
+  host: 127.0.0.1
+  user: backup
+  port: 2222
+  key_path: /work/tests/integration/_ssh/id_ed25519
+  strict_host_key_checking: false
+
+retention:
+  remote:
+    hourly: 24
+    daily: 7
+    weekly: 4
+    monthly: 12
+    yearly: 3
+  local:
+    hourly: 0
+    daily: 0
+    weekly: 0
+    monthly: 0
+    yearly: 0
+
+metrics:
+  transport: statsd
+  address: 127.0.0.1:8125
+  prefix: twindb
+  tags:
+    - env:test
+    - service:twindb-backup
+  interval_seconds: 2
+
+verify:
+  depth_bytes: 4096

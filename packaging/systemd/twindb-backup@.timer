@@ -1,0 +1,10 @@
+[Unit]
+Description=TwinDB Backup timer (%i)
+
+[Timer]
+OnCalendar=%i
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

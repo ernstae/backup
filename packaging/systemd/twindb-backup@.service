@@ -1,0 +1,16 @@
+[Unit]
+Description=TwinDB Backup (%i)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Lock file handling is built into twindb-backup, no need for external flock
+# The tool will handle locking internally with improved queue support
+ExecStart=/usr/bin/twindb-backup --config /etc/twindb/twindb-backup.yaml backup %i
+
+# Avoid runaway jobs
+TimeoutStartSec=6h
+
+[Install]
+WantedBy=multi-user.target

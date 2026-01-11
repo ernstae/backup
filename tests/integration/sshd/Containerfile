@@ -1,0 +1,11 @@
+FROM alpine:3.19
+
+RUN apk add --no-cache openssh-server
+RUN adduser -D -h /home/backup -s /bin/sh backup
+RUN mkdir -p /var/run/sshd
+
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+EXPOSE 2222
+ENTRYPOINT ["/entrypoint.sh"]

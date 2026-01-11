@@ -24,7 +24,7 @@ export PRINT_HELP_PYSCRIPT
 BROWSER := python -c "$$BROWSER_PYSCRIPT"
 
 PYTHON := python
-PYTHON_LIB := $(shell $(PYTHON) -c "from distutils.sysconfig import get_python_lib; import sys; sys.stdout.write(get_python_lib())" )
+PYTHON_LIB := $(shell $(PYTHON) -c "import sysconfig; print(sysconfig.get_path('purelib'))" )
 
 
 PLATFORM ?= ubuntu
@@ -195,3 +195,8 @@ install_package:
 safety: ## check for known security vulnerabilities
 	docker run --rm -it -v ${pwd}:/twindb-backup pyupio/safety safety check -r /twindb-backup/requirements.txt
 	docker run --rm -it -v ${pwd}:/twindb-backup pyupio/safety safety check -r /twindb-backup/requirements_dev.txt
+
+.PHONY: build-go
+build-go: ## Build the Go CLI binary
+	mkdir -p bin
+	go build -o bin/twindb-backup ./cmd/twindb-backup

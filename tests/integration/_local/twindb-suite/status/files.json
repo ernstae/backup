@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "backups": [
+    {
+      "key": "twindb-suite/daily/files/files-2026-01-11_23_14_05.tar.gz.gpg",
+      "host": "twindb-suite",
+      "interval": "daily",
+      "name": "files-2026-01-11_23_14_05.tar.gz.gpg",
+      "started_at": 1768173245,
+      "finished_at": 1768173245,
+      "bytes": 528
+    }
+  ]
+}

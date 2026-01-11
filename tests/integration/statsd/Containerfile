@@ -1,0 +1,7 @@
+FROM python:3.12-alpine
+
+RUN mkdir -p /data
+COPY server.py /server.py
+
+EXPOSE 8125/udp
+CMD ["python", "/server.py"]
