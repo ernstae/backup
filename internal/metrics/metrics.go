@@ -36,6 +36,7 @@ const (
 	MeasureVerifyBytes      = "verify_bytes_read"
 	MeasureBinlogApplyTime  = "binlog_apply_time"
 	MeasureBinlogApplyCount = "binlog_apply_count"
+	MeasurePreflightFailure = "preflight_failure"
 
 	OperationBackup       = "backup"
 	OperationRestore      = "restore"

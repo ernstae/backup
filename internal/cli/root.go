@@ -19,7 +19,7 @@ func NewRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "twindb-backup",
-		Short:         "TwinDB Backup (Go rewrite)",
+		Short:         "TwinDB Backup v5.0.0",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
@@ -48,8 +48,10 @@ func NewRootCommand() *cobra.Command {
 	cmd.AddCommand(newRestoreCommand())
 	cmd.AddCommand(newStatusCommand())
 	cmd.AddCommand(newListCommand())
+	cmd.AddCommand(newSummaryCommand())
 	cmd.AddCommand(newVerifyCommand())
 	cmd.AddCommand(newConfigCommand())
+	cmd.AddCommand(newHealthCommand())
 
 	return cmd
 }

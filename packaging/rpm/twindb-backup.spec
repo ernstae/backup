@@ -1,13 +1,17 @@
 Name:           twindb-backup
-Version:        0.1.0
+Version:        %{?version}%{!?version:5.0.0}
 Release:        1%{?dist}
-Summary:        TwinDB Backup (Go rewrite)
+Summary:        TwinDB Backup v5.0.0
 
 License:        Apache-2.0
 URL:            https://github.com/twindb/backup
 Source0:        %{name}-%{version}.tar.gz
 
-BuildRequires:  golang
+# Note: golang is not listed because we install Go 1.23+ from upstream tarball
+# in the build container. The build environment is controlled and Go is available
+# via /usr/local/go/bin/go, which satisfies the build requirements.
+BuildRequires:  make
+BuildRequires:  git
 Requires:       xtrabackup
 Requires:       xbcloud
 Requires:       mysql
@@ -22,6 +26,8 @@ binlog-based point-in-time recovery.
 %autosetup -n %{name}-%{version}
 
 %build
+export CGO_ENABLED=0
+export GOOS=linux
 %{__make} build-go
 
 %install
@@ -48,5 +54,5 @@ install -D -m 0644 docs/GO_REWRITE.md %{buildroot}%{_docdir}/%{name}/GO_REWRITE.
 %{_unitdir}/twindb-backup@.timer
 
 %changelog
-* Thu Jan 01 1970 TwinDB <support@twindb.com> - 0.1.0-1
-- Initial Go rewrite packaging
+* Thu Jan 01 1970 TwinDB <support@twindb.com> - 5.0.0-1
+- Initial v5.0.0 release

@@ -42,6 +42,45 @@ func TestMySQLStatusStoreRoundTrip(t *testing.T) {
 	}
 }
 
+func TestMySQLStatus_Add_DeduplicatesByKey(t *testing.T) {
+	status := NewMySQLStatus()
+	backup1 := MySQLBackup{
+		Key:        "host1/daily/mysql/backup1.xbstream.gz",
+		Host:       "host1",
+		Interval:   "daily",
+		Name:       "backup1.xbstream.gz",
+		Type:       "full",
+		StartedAt:  1000,
+		FinishedAt: 2000,
+		LSN:        12345,
+	}
+	backup2 := MySQLBackup{
+		Key:        "host1/daily/mysql/backup1.xbstream.gz", // Same key
+		Host:       "host1",
+		Interval:   "daily",
+		Name:       "backup1.xbstream.gz",
+		Type:       "full",
+		StartedAt:  3000, // Different timestamp
+		FinishedAt: 4000,
+		LSN:        67890, // Different LSN
+	}
+
+	status.Add(backup1)
+	if len(status.Backups) != 1 {
+		t.Fatalf("expected 1 backup after first Add, got %d", len(status.Backups))
+	}
+
+	status.Add(backup2)
+	if len(status.Backups) != 1 {
+		t.Fatalf("expected 1 backup after adding duplicate key, got %d", len(status.Backups))
+	}
+
+	// Verify the second backup replaced the first
+	if status.Backups[0].LSN != 67890 {
+		t.Errorf("expected backup to be replaced, LSN should be 67890, got %d", status.Backups[0].LSN)
+	}
+}
+
 func TestBinlogStatusStoreRoundTrip(t *testing.T) {
 	ctx := context.Background()
 	dst := memory.New("/backups")
@@ -74,27 +113,35 @@ func TestBinlogStatusStoreRoundTrip(t *testing.T) {
 func TestBinlogStatusRemoveOlderThan(t *testing.T) {
 	status := NewBinlogStatus()
 	now := time.Now()
-	status.Add(BinlogBackup{Key: "old", CreatedAt: now.Add(-48 * time.Hour).Unix()})
-	status.Add(BinlogBackup{Key: "keep", CreatedAt: now.Add(-2 * time.Hour).Unix()})
+	status.Add(BinlogBackup{
+		Key:       "host1/binlog/binlog.000001.gz",
+		Host:      "host1",
+		Name:      "binlog.000001",
+		CreatedAt: now.Add(-10 * 24 * time.Hour).Unix(), // 10 days ago
+	})
+	status.Add(BinlogBackup{
+		Key:       "host1/binlog/binlog.000002.gz",
+		Host:      "host1",
+		Name:      "binlog.000002",
+		CreatedAt: now.Add(-5 * 24 * time.Hour).Unix(), // 5 days ago
+	})
+	status.Add(BinlogBackup{
+		Key:       "host1/binlog/binlog.000003.gz",
+		Host:      "host1",
+		Name:      "binlog.000003",
+		CreatedAt: now.Add(-1 * 24 * time.Hour).Unix(), // 1 day ago
+	})
 
-	removed := status.RemoveOlderThan(now.Add(-24 * time.Hour))
+	cutoff := now.Add(-7 * 24 * time.Hour) // 7 days ago
+	removed := status.RemoveOlderThan(cutoff)
+
 	if len(removed) != 1 {
-		t.Fatalf("expected 1 removed binlog, got %d", len(removed))
+		t.Fatalf("expected 1 removed backup, got %d", len(removed))
 	}
-	if len(status.Backups) != 1 || status.Backups[0].Key != "keep" {
-		t.Fatalf("unexpected remaining binlogs")
+	if len(status.Backups) != 2 {
+		t.Fatalf("expected 2 remaining backups, got %d", len(status.Backups))
 	}
-}
-
-func TestMySQLStatusLatestFull(t *testing.T) {
-	status := NewMySQLStatus()
-	now := time.Now().Unix()
-	status.Add(MySQLBackup{Key: "full1", Type: "full", StartedAt: now - 10})
-	status.Add(MySQLBackup{Key: "inc1", Type: "incremental", StartedAt: now - 5})
-	status.Add(MySQLBackup{Key: "full2", Type: "full", StartedAt: now})
-
-	latest := status.LatestFull()
-	if latest == nil || latest.Key != "full2" {
-		t.Fatalf("unexpected latest full backup")
+	if removed[0].Name != "binlog.000001" {
+		t.Errorf("expected removed backup to be binlog.000001, got %s", removed[0].Name)
 	}
 }

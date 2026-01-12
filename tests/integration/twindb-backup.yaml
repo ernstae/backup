@@ -55,3 +55,6 @@ retention:
     weekly: 0
     monthly: 0
     yearly: 0
+
+worm:
+  enabled: false  # Disable WORM for integration tests to allow file overwrites

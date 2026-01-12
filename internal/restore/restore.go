@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -40,12 +41,14 @@ func RestoreMySQL(ctx context.Context, cfg *config.Config, backupID, pitrGTID, p
 	if err != nil {
 		return err
 	}
-	store := status.NewStore(dst)
+	// Respect worm.enabled configuration
+	host, _ := os.Hostname()
+	wormEnabled := cfg.IsWORMEnabled()
+	store := status.NewStoreWithWORM(dst, wormEnabled, host)
 	metricsExporter, err := metrics.New(cfg)
 	if err != nil {
 		return err
 	}
-	host, _ := os.Hostname()
 	spanTags := []string{
 		"host:" + host,
 		"pitr:none",
@@ -90,6 +93,12 @@ func RestoreMySQL(ctx context.Context, cfg *config.Config, backupID, pitrGTID, p
 	}
 	if err := finalizePrepare(ctx, cfg, dstDir, opts); err != nil {
 		return err
+	}
+
+	// Restore configuration files to _config/ directory
+	if err := restoreConfigFiles(dstDir, base); err != nil {
+		logging.Errorf("failed to restore config files: %v", err)
+		// Don't fail the restore if config file restoration fails
 	}
 
 	if pitrGTID == "" && pitrTime == "" {
@@ -210,6 +219,9 @@ func applyIncremental(ctx context.Context, cfg *config.Config, baseDir, incDir s
 		xtrabackupBin = "xtrabackup"
 	}
 	args := []string{"--prepare", "--apply-log-only", "--target-dir", baseDir, "--incremental-dir", incDir}
+	if memBytes := getFreeMemory(); memBytes > 0 {
+		args = append(args, "--use-memory", fmt.Sprintf("%d", memBytes))
+	}
 	if opts.Debug {
 		args = append(args, "--verbose")
 		logging.Debugf("xtrabackup command: %s %s", xtrabackupBin, strings.Join(args, " "))
@@ -229,6 +241,9 @@ func finalizePrepare(ctx context.Context, cfg *config.Config, baseDir string, op
 		xtrabackupBin = "xtrabackup"
 	}
 	args := []string{"--prepare", "--target-dir", baseDir}
+	if memBytes := getFreeMemory(); memBytes > 0 {
+		args = append(args, "--use-memory", fmt.Sprintf("%d", memBytes))
+	}
 	if opts.Debug {
 		args = append(args, "--verbose")
 		logging.Debugf("xtrabackup command: %s %s", xtrabackupBin, strings.Join(args, " "))
@@ -239,6 +254,48 @@ func finalizePrepare(ctx context.Context, cfg *config.Config, baseDir string, op
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("xtrabackup prepare failed: %w: %s", err, stderr.String())
 	}
+	return nil
+}
+
+// restoreConfigFiles restores MySQL configuration files from the backup to a _config/ directory.
+// This preserves the original directory structure of the config files.
+func restoreConfigFiles(dstDir string, backup *status.MySQLBackup) error {
+	if backup == nil || len(backup.ConfigFiles) == 0 {
+		// No config files to restore
+		return nil
+	}
+
+	configDir := filepath.Join(dstDir, "_config")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	for originalPath, content := range backup.ConfigFiles {
+		// Remove leading slash and create relative path structure
+		// e.g., /etc/my.cnf -> etc/my.cnf
+		// e.g., /etc/my.cnf.d/server.cnf -> etc/my.cnf.d/server.cnf
+		relPath := strings.TrimPrefix(originalPath, "/")
+		if relPath == "" {
+			// If path was just "/", use a default name
+			relPath = "root.cnf"
+		}
+
+		// Create full path in _config directory
+		configFilePath := filepath.Join(configDir, relPath)
+
+		// Create parent directories
+		if err := os.MkdirAll(filepath.Dir(configFilePath), 0o755); err != nil {
+			return fmt.Errorf("failed to create config subdirectory for %s: %w", originalPath, err)
+		}
+
+		// Write config file content
+		// Write config file content
+		if err := os.WriteFile(configFilePath, []byte(content), 0o644); err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", configFilePath, err)
+		}
+	}
+
+	logging.Infof("Restored %d configuration file(s) to %s", len(backup.ConfigFiles), configDir)
 	return nil
 }
 

@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/twindb/backup/internal/config"
 	"github.com/twindb/backup/internal/crypto"
 	"github.com/twindb/backup/internal/destination"
+	"github.com/twindb/backup/internal/destination/local"
 	"github.com/twindb/backup/internal/lock"
 	"github.com/twindb/backup/internal/logging"
 	"github.com/twindb/backup/internal/metrics"
@@ -43,6 +43,35 @@ func RunBackup(ctx context.Context, cfg *config.Config, interval string, binlogs
 		return nil
 	}
 
+	// Set open files limit to prevent "too many open files" errors
+	if err := setOpenFilesLimit(); err != nil {
+		logging.Errorf("failed to set open files limit: %v", err)
+		// Don't fail the backup if limit setting fails, but log the error
+	}
+
+	// Build destination early for pre-flight checks
+	dst, err := app.BuildDestination(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to build destination: %w", err)
+	}
+	// Respect worm.enabled configuration
+	host, _ := os.Hostname()
+	wormEnabled := cfg.IsWORMEnabled()
+	store := status.NewStoreWithWORM(dst, wormEnabled, host)
+
+	// Initialize metrics exporter early for pre-flight check metrics
+	metricsExporter, err := metrics.New(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to initialize metrics: %w", err)
+	}
+
+	// Run pre-flight checks before acquiring lock
+	logging.Infof("Running pre-flight checks...")
+	if err := RunPreflightChecks(ctx, cfg, dst, store, metricsExporter); err != nil {
+		return fmt.Errorf("pre-flight checks failed: %w", err)
+	}
+	logging.Infof("Pre-flight checks passed")
+
 	// Acquire lock before starting backup
 	lockFile := cfg.Paths.LockFile
 	if lockFile == "" {
@@ -64,15 +93,8 @@ func RunBackup(ctx context.Context, cfg *config.Config, interval string, binlogs
 		}
 	}()
 
-	dst, err := app.BuildDestination(cfg)
-	if err != nil {
-		return err
-	}
-	store := status.NewStore(dst)
-	metricsExporter, err := metrics.New(cfg)
-	if err != nil {
-		return err
-	}
+	// Print current backup status before starting
+	printBackupStatus(ctx, store, host, interval)
 	if binlogsOnly {
 		return backupBinlogs(ctx, cfg, dst, store, metricsExporter, interval, opts)
 	}
@@ -260,20 +282,25 @@ func backupMySQL(ctx context.Context, cfg *config.Config, dst destination.Destin
 		configVars, _ = mysqlClient.Variables(ctx)
 	}
 
+	// Capture configuration files
+	var configFiles map[string]string
+	configFiles, _ = mysql.DiscoverConfigFiles(ctx, cfg.MySQL.DefaultsFile, &mysqlClient)
+
 	backup := status.MySQLBackup{
-		Key:        key,
-		Host:       host,
-		Interval:   interval,
-		Name:       name,
-		Type:       backupType,
-		StartedAt:  startedAt.Unix(),
-		FinishedAt: time.Now().Unix(),
-		BinlogFile: binlogFile,
-		BinlogPos:  binlogPos,
-		LSN:        lsn,
-		ParentKey:  parentKey,
-		GTID:       gtid,
-		ConfigVars: configVars,
+		Key:         key,
+		Host:        host,
+		Interval:    interval,
+		Name:        name,
+		Type:        backupType,
+		StartedAt:   startedAt.Unix(),
+		FinishedAt:  time.Now().Unix(),
+		BinlogFile:  binlogFile,
+		BinlogPos:   binlogPos,
+		LSN:         lsn,
+		ParentKey:   parentKey,
+		GTID:        gtid,
+		ConfigVars:  configVars,
+		ConfigFiles: configFiles,
 	}
 	mysqlStatus.Add(backup)
 	_ = metricsExporter.Gauge(metrics.MetricName(metrics.CategoryMySQL, metrics.MeasureBackup), float64(backup.FinishedAt-backup.StartedAt), spanTags)
@@ -289,12 +316,25 @@ func backupMySQL(ctx context.Context, cfg *config.Config, dst destination.Destin
 
 	// If KeepLocal is enabled, save status to local destination and apply local retention
 	if localDst != nil {
-		localStore := status.NewStore(localDst)
-		if err := localStore.SaveMySQL(ctx, host, mysqlStatus); err != nil {
+		// Create local store with WORM enabled by default
+		wormEnabled := cfg.IsWORMEnabled()
+		localStore := status.NewStoreWithWORM(localDst, wormEnabled, host)
+		// Load existing local status to merge with new backup
+		localMySQLStatus, err := localStore.LoadMySQL(ctx, host)
+		if err != nil {
+			logging.Errorf("failed to load local status: %v", err)
+			localMySQLStatus = mysqlStatus
+		} else {
+			// Add the new backup to local status
+			localMySQLStatus.Add(backup)
+		}
+		// Apply local retention
+		applyMySQLRetentionLocal(cfg, localMySQLStatus, localDst)
+		// Save updated local status
+		if err := localStore.SaveMySQL(ctx, host, localMySQLStatus); err != nil {
 			logging.Errorf("failed to save status to local destination: %v", err)
 			// Don't fail the backup if local status save fails
 		}
-		applyMySQLRetentionLocal(cfg, mysqlStatus, localDst)
 	}
 
 	return nil
@@ -427,9 +467,18 @@ func backupBinlogs(ctx context.Context, cfg *config.Config, dst destination.Dest
 	if cfg.MySQL.ExpireLogDays > 0 {
 		cutoff := time.Now().Add(-time.Duration(cfg.MySQL.ExpireLogDays) * 24 * time.Hour)
 		removed := binlogStatus.RemoveOlderThan(cutoff)
-		for _, backup := range removed {
-			_ = dst.Delete(ctx, backup.Key)
+		
+		// Check if WORM is enabled (default: true)
+		wormEnabled := cfg.IsWORMEnabled()
+
+		// If WORM is enabled, don't delete binlogs - just remove from status
+		// Storage-level retention will handle cleanup
+		if !wormEnabled {
+			for _, backup := range removed {
+				_ = dst.Delete(ctx, backup.Key)
+			}
 		}
+		// If WORM enabled, files remain in storage (immutable)
 	}
 
 	_ = metricsExporter.Gauge(metrics.MetricName(metrics.CategoryMySQL, metrics.MeasureBinlogBackup), time.Since(startedAt).Seconds(), spanTags)
@@ -613,6 +662,52 @@ func applyMySQLRetentionLocal(cfg *config.Config, mysqlStatus *status.MySQLStatu
 	if cfg == nil || mysqlStatus == nil {
 		return
 	}
+
+	// Check if WORM is enabled (default: true)
+	wormEnabled := cfg.IsWORMEnabled()
+
+	// If WORM is enabled, don't delete backups
+	if wormEnabled {
+		// Apply retention by filtering status, but don't delete files
+		retention := map[string]int{
+			"hourly":  cfg.Retention.Local.Hourly,
+			"daily":   cfg.Retention.Local.Daily,
+			"weekly":  cfg.Retention.Local.Weekly,
+			"monthly": cfg.Retention.Local.Monthly,
+			"yearly":  cfg.Retention.Local.Yearly,
+		}
+		keep := make(map[string]bool)
+		for interval, limit := range retention {
+			if limit <= 0 {
+				continue
+			}
+			backups := filterByInterval(mysqlStatus.Backups, interval)
+			if len(backups) <= limit {
+				for _, backup := range backups {
+					keep[backup.Key] = true
+				}
+				continue
+			}
+			for i := len(backups) - limit; i < len(backups); i++ {
+				keep[backups[i].Key] = true
+			}
+		}
+		if len(keep) == 0 {
+			return
+		}
+		keep = keepWithParents(mysqlStatus.Backups, keep)
+		filtered := make([]status.MySQLBackup, 0, len(mysqlStatus.Backups))
+		for _, backup := range mysqlStatus.Backups {
+			if keep[backup.Key] {
+				filtered = append(filtered, backup)
+			}
+			// Don't delete - files remain in storage (WORM)
+		}
+		mysqlStatus.Backups = filtered
+		return
+	}
+
+	// Legacy behavior: Delete old backups when WORM is disabled
 	retention := map[string]int{
 		"hourly":  cfg.Retention.Local.Hourly,
 		"daily":   cfg.Retention.Local.Daily,

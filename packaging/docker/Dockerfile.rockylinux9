@@ -1,0 +1,25 @@
+FROM rockylinux:9
+
+# Install Go 1.23+ (RockyLinux 9 has 1.25.3, but we pin to ensure consistency)
+# If distro package is >= 1.23, use it; otherwise install from upstream
+RUN dnf install -y \
+    rpm-build \
+    rpmdevtools \
+    make \
+    git \
+    curl \
+    && dnf clean all \
+    && ARCH=\$(uname -m) \
+    && GO_ARCH=\$(case "\$ARCH" in x86_64) echo "amd64";; aarch64) echo "arm64";; *) echo "amd64";; esac) \
+    && GO_VERSION=\$(dnf list --available golang 2>/dev/null | grep -E '^golang\\.' | head -1 | awk '{print \$2}' | sed 's/-.*//') \
+    && if [ -n "\$GO_VERSION" ] && [ "\$(printf '%s\\n' '1.23.0' \"\$GO_VERSION\" | sort -V | head -1)" = "1.23.0" ]; then \
+        dnf install -y golang; \
+    else \
+        curl -L "https://go.dev/dl/go1.23.0.linux-\${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz && \
+        tar -C /usr/local -xzf /tmp/go.tar.gz && \
+        rm /tmp/go.tar.gz && \
+        ln -sf /usr/local/go/bin/go /usr/local/bin/go && \
+        ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt; \
+    fi
+
+WORKDIR /build

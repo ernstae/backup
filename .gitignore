@@ -25,6 +25,13 @@ var/
 .installed.cfg
 *.egg
 pkg/
+# Packaging output
+packaging/dist/
+*.rpm
+*.deb
+*.dsc
+*.changes
+*.tar.gz
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -74,3 +81,30 @@ target/
 
 # environment
 .env
+
+# Go build artifacts
+bin/
+*.test
+*.out
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+twindb-backup
+
+# Go test cache
+.gocache/
+**/.gocache/
+
+# IDE
+.zed/
+.vscode/
+.idea/
+
+# Generated documentation
+site/
+
+# Test artifacts
+*.log
+*.tmp

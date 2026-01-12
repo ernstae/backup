@@ -12,8 +12,13 @@ import (
 )
 
 // BuildDestination constructs a destination based on config.
+// Wraps the destination with WORM enforcement if WORM is enabled (default: true).
 func BuildDestination(cfg *config.Config) (destination.Destination, error) {
-	if cfg.Destination.Kind == "xbcloud" {
+	var dst destination.Destination
+	var err error
+
+	switch cfg.Destination.Kind {
+	case "xbcloud":
 		xbCfg := xbcloud.Config{
 			Binary:     cfg.MySQL.XbcloudBinary,
 			Provider:   xbcloud.Provider(cfg.Destination.Provider),
@@ -26,15 +31,16 @@ func BuildDestination(cfg *config.Config) (destination.Destination, error) {
 		xbCfg.S3.Endpoint = cfg.S3.Endpoint
 		xbCfg.Azure.ConnectionString = cfg.Azure.ConnectionString
 		xbCfg.Azure.Container = cfg.Azure.Container
-		return xbcloud.New(xbCfg)
-	}
-	if cfg.Destination.Kind == "local" {
+		dst, err = xbcloud.New(xbCfg)
+		if err != nil {
+			return nil, err
+		}
+	case "local":
 		if cfg.Destination.RemotePath == "" {
 			return nil, fmt.Errorf("destination.remote_path is required for local")
 		}
-		return local.New(cfg.Destination.RemotePath), nil
-	}
-	if cfg.Destination.Kind == "ssh" {
+		dst = local.New(cfg.Destination.RemotePath)
+	case "ssh":
 		sshCfg := ssh.Config{
 			Host:                  cfg.SSH.Host,
 			User:                  cfg.SSH.User,
@@ -44,16 +50,27 @@ func BuildDestination(cfg *config.Config) (destination.Destination, error) {
 			KnownHostsFile:        cfg.SSH.KnownHostsFile,
 			RemotePath:            cfg.Destination.RemotePath,
 		}
-		return ssh.New(sshCfg)
-	}
-	if cfg.Destination.Kind == "gcs" {
+		dst, err = ssh.New(sshCfg)
+		if err != nil {
+			return nil, err
+		}
+	case "gcs":
 		gcsCfg := gcs.Config{
 			Bucket:      cfg.GCS.Bucket,
 			RemotePath:  cfg.Destination.RemotePath,
 			Binary:      cfg.GCS.GsutilBin,
 			Credentials: cfg.GCS.Credentials,
 		}
-		return gcs.New(gcsCfg)
+		dst, err = gcs.New(gcsCfg)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported destination kind %q", cfg.Destination.Kind)
 	}
-	return nil, fmt.Errorf("unsupported destination kind %q", cfg.Destination.Kind)
+
+	// Wrap with WORM enforcement (default: enabled)
+	wormEnabled := cfg.IsWORMEnabled()
+
+	return destination.NewWormDestination(dst, wormEnabled), nil
 }

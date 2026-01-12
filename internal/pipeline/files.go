@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -150,12 +149,25 @@ func backupFiles(ctx context.Context, cfg *config.Config, dst destination.Destin
 
 	// If KeepLocal is enabled, save status to local destination and apply local retention
 	if localDst != nil {
-		localStore := status.NewStore(localDst)
-		if err := localStore.SaveFiles(ctx, host, filesStatus); err != nil {
+		// Create local store with WORM enabled by default
+		wormEnabled := cfg.IsWORMEnabled()
+		localStore := status.NewStoreWithWORM(localDst, wormEnabled, host)
+		// Load existing local status to merge with new backup
+		localFilesStatus, err := localStore.LoadFiles(ctx, host)
+		if err != nil {
+			logging.Errorf("failed to load local status: %v", err)
+			localFilesStatus = filesStatus
+		} else {
+			// Add the new backup to local status
+			localFilesStatus.Add(backup)
+		}
+		// Apply local retention
+		applyFilesRetentionLocal(cfg, localFilesStatus, localDst)
+		// Save updated local status
+		if err := localStore.SaveFiles(ctx, host, localFilesStatus); err != nil {
 			logging.Errorf("failed to save status to local destination: %v", err)
 			// Don't fail the backup if local status save fails
 		}
-		applyFilesRetentionLocal(cfg, filesStatus, localDst)
 	}
 
 	return nil
@@ -189,6 +201,51 @@ func applyFilesRetention(cfg *config.Config, filesStatus *status.FilesStatus, ds
 	if cfg == nil || filesStatus == nil {
 		return
 	}
+
+	// Check if WORM is enabled (default: true)
+	wormEnabled := cfg.IsWORMEnabled()
+
+	// If WORM is enabled, don't delete backups
+	if wormEnabled {
+		// Apply retention by filtering status, but don't delete files
+		retention := map[string]int{
+			"hourly":  cfg.Retention.Remote.Hourly,
+			"daily":   cfg.Retention.Remote.Daily,
+			"weekly":  cfg.Retention.Remote.Weekly,
+			"monthly": cfg.Retention.Remote.Monthly,
+			"yearly":  cfg.Retention.Remote.Yearly,
+		}
+		keep := make(map[string]bool)
+		for interval, limit := range retention {
+			if limit <= 0 {
+				continue
+			}
+			backups := filterFilesByInterval(filesStatus.Backups, interval)
+			if len(backups) <= limit {
+				for _, backup := range backups {
+					keep[backup.Key] = true
+				}
+				continue
+			}
+			for i := len(backups) - limit; i < len(backups); i++ {
+				keep[backups[i].Key] = true
+			}
+		}
+		if len(keep) == 0 {
+			return
+		}
+		filtered := make([]status.FileBackup, 0, len(filesStatus.Backups))
+		for _, backup := range filesStatus.Backups {
+			if keep[backup.Key] {
+				filtered = append(filtered, backup)
+			}
+			// Don't delete - files remain in storage (WORM)
+		}
+		filesStatus.Backups = filtered
+		return
+	}
+
+	// Legacy behavior: Delete old backups when WORM is disabled
 	retention := map[string]int{
 		"hourly":  cfg.Retention.Remote.Hourly,
 		"daily":   cfg.Retention.Remote.Daily,
@@ -240,6 +297,51 @@ func applyFilesRetentionLocal(cfg *config.Config, filesStatus *status.FilesStatu
 	if cfg == nil || filesStatus == nil {
 		return
 	}
+
+	// Check if WORM is enabled (default: true)
+	wormEnabled := cfg.IsWORMEnabled()
+
+	// If WORM is enabled, don't delete backups
+	if wormEnabled {
+		// Apply retention by filtering status, but don't delete files
+		retention := map[string]int{
+			"hourly":  cfg.Retention.Local.Hourly,
+			"daily":   cfg.Retention.Local.Daily,
+			"weekly":  cfg.Retention.Local.Weekly,
+			"monthly": cfg.Retention.Local.Monthly,
+			"yearly":  cfg.Retention.Local.Yearly,
+		}
+		keep := make(map[string]bool)
+		for interval, limit := range retention {
+			if limit <= 0 {
+				continue
+			}
+			backups := filterFilesByInterval(filesStatus.Backups, interval)
+			if len(backups) <= limit {
+				for _, backup := range backups {
+					keep[backup.Key] = true
+				}
+				continue
+			}
+			for i := len(backups) - limit; i < len(backups); i++ {
+				keep[backups[i].Key] = true
+			}
+		}
+		if len(keep) == 0 {
+			return
+		}
+		filtered := make([]status.FileBackup, 0, len(filesStatus.Backups))
+		for _, backup := range filesStatus.Backups {
+			if keep[backup.Key] {
+				filtered = append(filtered, backup)
+			}
+			// Don't delete - files remain in storage (WORM)
+		}
+		filesStatus.Backups = filtered
+		return
+	}
+
+	// Legacy behavior: Delete old backups when WORM is disabled
 	retention := map[string]int{
 		"hourly":  cfg.Retention.Local.Hourly,
 		"daily":   cfg.Retention.Local.Daily,

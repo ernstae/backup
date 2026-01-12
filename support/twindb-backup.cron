@@ -1,5 +1,0 @@
-@hourly  root twindb-backup backup hourly
-@daily   root twindb-backup backup daily
-@weekly  root twindb-backup backup weekly
-@monthly root twindb-backup backup monthly
-@yearly  root twindb-backup backup yearly

@@ -1,2 +1,0 @@
-#!/bin/sh
-find /opt/twindb-backup/ -name "*.pyc" -delete

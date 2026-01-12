@@ -1,7 +1,7 @@
 FROM alpine:3.19
 
 RUN apk add --no-cache openssh-server
-RUN adduser -D -h /home/backup -s /bin/sh backup
+RUN adduser -D -h /home/backup -s /bin/sh -u 1001 backup
 RUN mkdir -p /var/run/sshd
 
 COPY entrypoint.sh /entrypoint.sh

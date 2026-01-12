@@ -1,0 +1,17 @@
+Source: twindb-backup
+Section: admin
+Priority: optional
+Maintainer: TwinDB <support@twindb.com>
+Build-Depends: debhelper (>= 13), dh-sequence-systemd, git
+# Note: golang-go is not listed because we install Go 1.23+ from upstream tarball
+# in the build container. The build environment is controlled and Go is available
+# via /usr/local/go/bin/go, which satisfies the build requirements.
+Standards-Version: 4.6.0
+
+Package: twindb-backup
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, xtrabackup, xbcloud, mysql-client, gzip, bzip2
+Description: TwinDB Backup - MySQL backup tool with point-in-time recovery
+ TwinDB Backup is a tool for streaming MySQL backups to blob storage with
+ binlog-based point-in-time recovery. Version 5.0.0 includes improved
+ security, performance, and operational features.

@@ -1,0 +1,24 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Go 1.23+ from official source (Ubuntu 24.04 has 1.22.2 which is too old)
+# Detect architecture for Go binary download
+RUN apt-get update && apt-get install -y \
+    curl \
+    build-essential \
+    devscripts \
+    debhelper \
+    dh-sequence-systemd \
+    fakeroot \
+    git \
+    && rm -rf /var/lib/apt/lists/* \
+    && ARCH=$(dpkg --print-architecture) \
+    && GO_ARCH=$(case "$ARCH" in amd64) echo "amd64";; arm64) echo "arm64";; *) echo "amd64";; esac) \
+    && curl -L "https://go.dev/dl/go1.23.0.linux-${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz \
+    && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+WORKDIR /build

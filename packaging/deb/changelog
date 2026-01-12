@@ -1,0 +1,9 @@
+twindb-backup (5.0.0-1) unstable; urgency=medium
+
+  * Initial v5.0.0 release
+  * Improved lock file handling
+  * FIPS-142+ compliant SHA-256 checksums
+  * Config file capture and restoration
+  * KeepLocal functionality with local retention
+
+ -- TwinDB <support@twindb.com>  Thu, 01 Jan 1970 00:00:00 +0000

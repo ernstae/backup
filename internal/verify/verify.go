@@ -31,13 +31,14 @@ func VerifyMySQL(ctx context.Context, cfg *config.Config, backupID string, opts 
 	if err != nil {
 		return err
 	}
-	store := status.NewStore(dst)
+	// Respect worm.enabled configuration
+	host, _ := os.Hostname()
+	wormEnabled := cfg.IsWORMEnabled()
+	store := status.NewStoreWithWORM(dst, wormEnabled, host)
 	metricsExporter, err := metrics.New(cfg)
 	if err != nil {
 		return err
 	}
-
-	host, _ := os.Hostname()
 	mysqlStatus, err := store.LoadMySQL(ctx, host)
 	if err != nil {
 		return err

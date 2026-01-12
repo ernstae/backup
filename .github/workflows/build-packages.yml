@@ -1,0 +1,175 @@
+name: Build Packages
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (e.g., 0.1.0)'
+        required: true
+        type: string
+
+jobs:
+  build-rpm-rockylinux8:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      
+      - name: Build RPM for RockyLinux 8 (${{ matrix.arch }})
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p packaging/dist
+          GOARCH=${{ matrix.arch }} ./packaging/build-rpm.sh 8
+      
+      - name: Upload RPM artifacts (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-rockylinux8-${{ matrix.arch }}
+          path: packaging/dist/*.rpm
+          retention-days: 30
+
+  build-rpm-rockylinux9:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      
+      - name: Build RPM for RockyLinux 9 (${{ matrix.arch }})
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p packaging/dist
+          GOARCH=${{ matrix.arch }} ./packaging/build-rpm.sh 9
+      
+      - name: Upload RPM artifacts (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-rockylinux9-${{ matrix.arch }}
+          path: packaging/dist/*.rpm
+          retention-days: 30
+
+  build-rpm-rockylinux10:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      
+      - name: Build RPM for RockyLinux 10 (${{ matrix.arch }})
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p packaging/dist
+          GOARCH=${{ matrix.arch }} ./packaging/build-rpm.sh 10
+      
+      - name: Upload RPM artifacts (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-rockylinux10-${{ matrix.arch }}
+          path: packaging/dist/*.rpm
+          retention-days: 30
+
+  build-deb-ubuntu:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Install Podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      
+      - name: Build DEB for Ubuntu (${{ matrix.arch }})
+        env:
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          mkdir -p packaging/dist
+          GOARCH=${{ matrix.arch }} ./packaging/build-deb.sh
+      
+      - name: Upload DEB artifacts (${{ matrix.arch }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-ubuntu-${{ matrix.arch }}
+          path: packaging/dist/*.deb
+          retention-days: 30
+
+  create-release:
+    needs: [build-rpm-rockylinux8, build-rpm-rockylinux9, build-rpm-rockylinux10, build-deb-ubuntu]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Get version from tag
+        id: get_version
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          body: |
+            ## TwinDB Backup Go Rewrite ${{ steps.get_version.outputs.version }}
+            
+            ### Packages
+            
+            **RPM (RockyLinux):**
+            - RockyLinux 8 (amd64, arm64)
+            - RockyLinux 9 (amd64, arm64)
+            - RockyLinux 10 (amd64, arm64)
+            
+            **DEB (Ubuntu):**
+            - Ubuntu 24.04 LTS (noble) - amd64, arm64
+            
+            ### Installation
+            
+            **RPM:**
+            ```bash
+            sudo rpm -ivh twindb-backup-*.rpm
+            ```
+            
+            **DEB:**
+            ```bash
+            sudo dpkg -i twindb-backup_*.deb
+            sudo apt-get install -f
+            ```
+          files: |
+            release-artifacts/**/*.rpm
+            release-artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,26 @@
+site_name: TwinDB Backup
+site_description: Documentation for TwinDB Backup v5.0.0
+site_author: TwinDB
+site_dir: site
+
+docs_dir: docs-go
+
+theme:
+  name: mkdocs
+
+nav:
+  - Overview: index.md
+  - Install: installation.md
+  - Configuration: configuration.md
+  - CLI: cli.md
+  - Destinations: destinations.md
+  - WORM Storage: worm.md
+  - PITR Restore: pitr.md
+  - Metrics: metrics.md
+  - Systemd Scheduling: systemd.md
+  - Best Practices: best-practices.md
+  - Troubleshooting: troubleshooting.md
+  - Packaging: packaging.md
+  - Testing: testing.md
+  - Architecture: architecture.md
+  - Authors: authors.md

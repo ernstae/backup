@@ -190,6 +190,9 @@ metrics:
 
 verify:
   depth_bytes: 4096
+
+worm:
+  enabled: false  # Disable WORM for integration tests to allow file overwrites
 CONFIG
 
   podman run --rm --pod "$POD_NAME" \

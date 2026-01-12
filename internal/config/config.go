@@ -7,7 +7,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config is the YAML configuration schema for the Go rewrite.
+// Config is the YAML configuration schema for TwinDB Backup v5.0.0.
 type Config struct {
 	Version int `yaml:"version"`
 	Paths   struct {
@@ -124,6 +124,14 @@ type Config struct {
 	Verify struct {
 		DepthBytes int `yaml:"depth_bytes"`
 	} `yaml:"verify"`
+
+	WORM struct {
+		Enabled                *bool  `yaml:"enabled"`                  // Default: true (WORM enabled by default), nil = not set = default true
+		Mode                   string `yaml:"mode"`                    // "software" | "storage" | "hybrid" (default: "hybrid")
+		RetentionLock          bool   `yaml:"retention_lock"`          // Use storage-level retention when available (default: true)
+		StatusLogCompaction    bool   `yaml:"status_log_compaction"`   // Compact status logs periodically (default: true)
+		StatusLogRetentionDays int   `yaml:"status_log_retention_days"` // Keep status logs for N days (default: 90)
+	} `yaml:"worm"`
 }
 
 // Load reads a YAML config file into a Config struct.
@@ -141,4 +149,13 @@ func Load(path string) (*Config, error) {
 		return nil, err
 	}
 	return &cfg, nil
+}
+
+// IsWORMEnabled returns true if WORM is enabled.
+// Defaults to true if not explicitly set (secure by default).
+func (c *Config) IsWORMEnabled() bool {
+	if c.WORM.Enabled == nil {
+		return true // Default: enabled
+	}
+	return *c.WORM.Enabled
 }

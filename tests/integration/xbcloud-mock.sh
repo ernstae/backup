@@ -6,11 +6,6 @@ if [ -z "${XBCLOUD_MOCK_DIR:-}" ]; then
   exit 2
 fi
 
-if [ "$#" -lt 2 ]; then
-  echo "not enough arguments" >&2
-  exit 2
-fi
-
 operation=""
 object_path=""
 idx=0
@@ -22,6 +17,18 @@ for arg in "$@"; do
     object_path="$arg"
   fi
 done
+
+case "${1:-}" in
+  --version|-v|version)
+    echo "xbcloud version 8.0.0"
+    exit 0
+    ;;
+esac
+
+if [ "$#" -lt 2 ]; then
+  echo "not enough arguments" >&2
+  exit 2
+fi
 
 full_path="$XBCLOUD_MOCK_DIR/$object_path"
 

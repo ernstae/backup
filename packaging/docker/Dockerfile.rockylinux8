@@ -1,0 +1,19 @@
+FROM rockylinux:8
+
+# Install Go 1.23+ (install from upstream as RockyLinux 8 may have older version)
+RUN dnf install -y \
+    rpm-build \
+    rpmdevtools \
+    make \
+    git \
+    curl \
+    && dnf clean all \
+    && ARCH=\$(uname -m) \
+    && GO_ARCH=\$(case "\$ARCH" in x86_64) echo "amd64";; aarch64) echo "arm64";; *) echo "amd64";; esac) \
+    && curl -L "https://go.dev/dl/go1.23.0.linux-\${GO_ARCH}.tar.gz" -o /tmp/go.tar.gz \
+    && tar -C /usr/local -xzf /tmp/go.tar.gz \
+    && rm /tmp/go.tar.gz \
+    && ln -sf /usr/local/go/bin/go /usr/local/bin/go \
+    && ln -sf /usr/local/go/bin/gofmt /usr/local/bin/gofmt
+
+WORKDIR /build

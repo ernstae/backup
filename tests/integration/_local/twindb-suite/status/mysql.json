@@ -2,17 +2,17 @@
   "version": 1,
   "backups": [
     {
-      "key": "twindb-suite/daily/mysql/mysql-2026-01-11_23_14_05.xbstream.gz.gpg",
+      "key": "twindb-suite/daily/mysql/mysql-2026-01-12_05_19_46.xbstream.gz.gpg",
       "host": "twindb-suite",
       "interval": "daily",
-      "name": "mysql-2026-01-11_23_14_05.xbstream.gz.gpg",
+      "name": "mysql-2026-01-12_05_19_46.xbstream.gz.gpg",
       "type": "full",
-      "started_at": 1768173245,
-      "finished_at": 1768173248,
+      "started_at": 1768195186,
+      "finished_at": 1768195189,
       "binlog_file": "",
       "binlog_pos": 0,
       "lsn": 0,
-      "gtid_executed": "38d866f6-eea0-11f0-9449-c2b1e3968736:1-30",
+      "gtid_executed": "38d866f6-eea0-11f0-9449-c2b1e3968736:1-60",
       "config_vars": {
         "activate_all_roles_on_login": "OFF",
         "admin_address": "",
@@ -136,7 +136,7 @@
         "global_connection_memory_tracking": "OFF",
         "group_concat_max_len": "1024",
         "group_replication_consistency": "EVENTUAL",
-        "gtid_executed": "38d866f6-eea0-11f0-9449-c2b1e3968736:1-30",
+        "gtid_executed": "38d866f6-eea0-11f0-9449-c2b1e3968736:1-60",
         "gtid_executed_compression_period": "0",
         "gtid_mode": "ON",
         "gtid_next": "AUTOMATIC",
@@ -544,7 +544,7 @@
         "proxy_user": "",
         "pseudo_replica_mode": "OFF",
         "pseudo_slave_mode": "OFF",
-        "pseudo_thread_id": "14",
+        "pseudo_thread_id": "15",
         "query_alloc_block_size": "8192",
         "query_prealloc_size": "8192",
         "rand_seed1": "0",
@@ -673,7 +673,7 @@
         "ssl_key": "server-key.pem",
         "ssl_session_cache_mode": "ON",
         "ssl_session_cache_timeout": "300",
-        "statement_id": "45",
+        "statement_id": "48",
         "stored_program_cache": "256",
         "stored_program_definition_cache": "256",
         "super_read_only": "OFF",
@@ -706,7 +706,7 @@
         "thread_stack": "1048576",
         "thread_statistics": "OFF",
         "time_zone": "SYSTEM",
-        "timestamp": "1768173248.519491",
+        "timestamp": "1768195189.507234",
         "tls_ciphersuites": "",
         "tls_version": "TLSv1.2,TLSv1.3",
         "tmp_table_size": "16777216",
@@ -731,6 +731,10 @@
         "warning_count": "0",
         "windowing_use_high_precision": "ON",
         "xa_detach_on_prepare": "ON"
+      },
+      "config_files": {
+        "/etc/my.cnf": "# Percona Server template configuration\n#\n# For advice on how to change settings please see\n# http://dev.mysql.com/doc/refman/8.0/en/server-configuration-defaults.html\n\n[mysqld]\n#\n# Remove leading # and set to the amount of RAM for the most important data\n# cache in MySQL. Start at 70% of total RAM for dedicated server, else 10%.\n# innodb_buffer_pool_size = 128M\n#\n# Remove the leading \"# \" to disable binary logging\n# Binary logging captures changes between backups and is enabled by\n# default. It's default setting is log_bin=binlog\n# disable_log_bin\n#\n# Remove leading # to set options mainly useful for reporting servers.\n# The server defaults are faster for transactions and fast SELECTs.\n# Adjust sizes as needed, experiment to find the optimal values.\n# join_buffer_size = 128M\n# sort_buffer_size = 2M\n# read_rnd_buffer_size = 2M\n#\n# Remove leading # to revert to previous value for default_authentication_plugin,\n# this will increase compatibility with older clients. For background, see:\n# https://dev.mysql.com/doc/refman/8.0/en/server-system-variables.html#sysvar_default_authentication_plugin\n# default-authentication-plugin=mysql_native_password\n\ndatadir=/var/lib/mysql\nsocket=/var/lib/mysql/mysql.sock\n\nlog-error=/var/log/mysqld.log\npid-file=/var/run/mysqld/mysqld.pid\n\n",
+        "/work/tests/integration/my.cnf": "[client]\nuser = root\npassword = rootpass\nhost = 127.0.0.1\nport = 3306\n\n[mysql]\nuser = root\npassword = rootpass\nhost = 127.0.0.1\nport = 3306\n"
       }
     }
   ]

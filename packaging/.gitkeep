@@ -1,0 +1,2 @@
+# This file ensures the dist directory exists in git
+# Actual package files are ignored via .gitignore

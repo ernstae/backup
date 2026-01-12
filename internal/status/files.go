@@ -24,6 +24,15 @@ func NewFilesStatus() *FilesStatus {
 }
 
 func (s *FilesStatus) Add(backup FileBackup) {
+	// Check if backup with same key already exists and replace it
+	for i, existing := range s.Backups {
+		if existing.Key == backup.Key {
+			s.Backups[i] = backup
+			s.sort()
+			return
+		}
+	}
+	// New backup, append it
 	s.Backups = append(s.Backups, backup)
 	s.sort()
 }

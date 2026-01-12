@@ -63,6 +63,15 @@ func NewBinlogStatus() *BinlogStatus {
 }
 
 func (s *MySQLStatus) Add(backup MySQLBackup) {
+	// Check if backup with same key already exists and replace it
+	for i, existing := range s.Backups {
+		if existing.Key == backup.Key {
+			s.Backups[i] = backup
+			s.sort()
+			return
+		}
+	}
+	// New backup, append it
 	s.Backups = append(s.Backups, backup)
 	s.sort()
 }
@@ -134,14 +143,57 @@ func (s *BinlogStatus) sort() {
 }
 
 type Store struct {
-	dst destination.Destination
+	dst      destination.Destination
+	logStore *LogStore
+	wormMode bool
+}
+
+// Destination returns the underlying destination for health checks.
+func (s *Store) Destination() destination.Destination {
+	return s.dst
 }
 
 func NewStore(dst destination.Destination) *Store {
-	return &Store{dst: dst}
+	host, _ := os.Hostname() // Get hostname once
+	return &Store{
+		dst:      dst,
+		logStore: NewLogStore(dst, host, true), // WORM enabled by default
+		wormMode: true,                         // WORM enabled by default
+	}
+}
+
+// NewStoreWithWORM creates a store with WORM mode control.
+func NewStoreWithWORM(dst destination.Destination, wormEnabled bool, host string) *Store {
+	return &Store{
+		dst:      dst,
+		logStore: NewLogStore(dst, host, wormEnabled),
+		wormMode: wormEnabled,
+	}
 }
 
 func (s *Store) LoadMySQL(ctx context.Context, host string) (*MySQLStatus, error) {
+	// If WORM mode and log store enabled, try to load from snapshot first
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		snapshotKey := statusKey(host, "mysql.snapshot.json")
+		if reader, err := s.dst.Get(ctx, snapshotKey); err == nil {
+			content, err := io.ReadAll(reader)
+			reader.Close()
+			if err == nil && len(content) > 0 {
+				if err := s.verifyChecksum(ctx, snapshotKey, content); err == nil {
+					var status MySQLStatus
+					if json.Unmarshal(content, &status) == nil {
+						status.sort()
+						return &status, nil
+					}
+				}
+			}
+		}
+		// Fall back to log-based loading (simplified: use snapshot for now)
+		// Full log merging would require destination.List() method
+		return s.logStore.LoadMySQLFromLogs(ctx)
+	}
+
+	// Legacy: Load from single JSON file
 	key := statusKey(host, "mysql.json")
 	reader, err := s.dst.Get(ctx, key)
 	if err != nil {
@@ -152,11 +204,11 @@ func (s *Store) LoadMySQL(ctx context.Context, host string) (*MySQLStatus, error
 	if err != nil {
 		return nil, err
 	}
-	if err := s.verifyChecksum(ctx, key, content); err != nil {
-		return nil, err
-	}
 	if len(content) == 0 {
 		return NewMySQLStatus(), nil
+	}
+	if err := s.verifyChecksum(ctx, key, content); err != nil {
+		return nil, err
 	}
 	var status MySQLStatus
 	if err := json.Unmarshal(content, &status); err != nil {
@@ -170,6 +222,22 @@ func (s *Store) SaveMySQL(ctx context.Context, host string, status *MySQLStatus)
 	if status == nil {
 		return errors.New("mysql status is nil")
 	}
+
+	// WORM mode: Use append-only logs + snapshot
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		// Append only the latest backup entry (new entries only)
+		// Compare with previous status to find new backups
+		if len(status.Backups) > 0 {
+			latest := status.Backups[len(status.Backups)-1]
+			if err := s.logStore.AppendMySQL(ctx, latest); err != nil {
+				return err
+			}
+		}
+			// Save snapshot (for efficient reading)
+		return s.saveMySQLSnapshot(ctx, host, status)
+	}
+
+	// Non-WORM mode: Single JSON file (legacy behavior)
 	payload, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
 		return err
@@ -181,7 +249,42 @@ func (s *Store) SaveMySQL(ctx context.Context, host string, status *MySQLStatus)
 	return s.writeChecksum(ctx, key, payload)
 }
 
+// saveMySQLSnapshot saves a snapshot of the MySQL status (for log compaction).
+func (s *Store) saveMySQLSnapshot(ctx context.Context, host string, status *MySQLStatus) error {
+	payload, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	key := statusKey(host, "mysql.snapshot.json")
+	if err := s.dst.Put(ctx, key, bytesReader(payload)); err != nil {
+		return err
+	}
+	return s.writeChecksum(ctx, key, payload)
+}
+
 func (s *Store) LoadBinlog(ctx context.Context, host string) (*BinlogStatus, error) {
+	// If WORM mode and log store enabled, try to load from snapshot first
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		snapshotKey := statusKey(host, "binlog.snapshot.json")
+		if reader, err := s.dst.Get(ctx, snapshotKey); err == nil {
+			content, err := io.ReadAll(reader)
+			reader.Close()
+			if err == nil && len(content) > 0 {
+				if err := s.verifyChecksum(ctx, snapshotKey, content); err == nil {
+					var status BinlogStatus
+					if json.Unmarshal(content, &status) == nil {
+						status.sort()
+						return &status, nil
+					}
+				}
+			}
+		}
+		// Fall back to log-based loading (simplified: use snapshot for now)
+		// Full log merging would require destination.List() method
+		return s.logStore.LoadBinlogFromLogs(ctx)
+	}
+
+	// Legacy: Load from single JSON file
 	key := statusKey(host, "binlog.json")
 	reader, err := s.dst.Get(ctx, key)
 	if err != nil {
@@ -192,11 +295,11 @@ func (s *Store) LoadBinlog(ctx context.Context, host string) (*BinlogStatus, err
 	if err != nil {
 		return nil, err
 	}
-	if err := s.verifyChecksum(ctx, key, content); err != nil {
-		return nil, err
-	}
 	if len(content) == 0 {
 		return NewBinlogStatus(), nil
+	}
+	if err := s.verifyChecksum(ctx, key, content); err != nil {
+		return nil, err
 	}
 	var status BinlogStatus
 	if err := json.Unmarshal(content, &status); err != nil {
@@ -210,6 +313,21 @@ func (s *Store) SaveBinlog(ctx context.Context, host string, status *BinlogStatu
 	if status == nil {
 		return errors.New("binlog status is nil")
 	}
+
+	// If WORM mode and log store enabled, use append-only logs
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		// Append only the latest binlog (new entries only)
+		if len(status.Backups) > 0 {
+			latest := status.Backups[len(status.Backups)-1]
+			if err := s.logStore.AppendBinlog(ctx, latest); err != nil {
+				return err
+			}
+		}
+		// Save snapshot
+		return s.saveBinlogSnapshot(ctx, host, status)
+	}
+
+	// Legacy: Single JSON file
 	payload, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
 		return err
@@ -221,7 +339,40 @@ func (s *Store) SaveBinlog(ctx context.Context, host string, status *BinlogStatu
 	return s.writeChecksum(ctx, key, payload)
 }
 
+// saveBinlogSnapshot saves a snapshot of the binlog status.
+func (s *Store) saveBinlogSnapshot(ctx context.Context, host string, status *BinlogStatus) error {
+	payload, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	key := statusKey(host, "binlog.snapshot.json")
+	if err := s.dst.Put(ctx, key, bytesReader(payload)); err != nil {
+		return err
+	}
+	return s.writeChecksum(ctx, key, payload)
+}
+
 func (s *Store) LoadFiles(ctx context.Context, host string) (*FilesStatus, error) {
+	// If WORM mode, try to load from snapshot first
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		snapshotKey := statusKey(host, "files.snapshot.json")
+		if reader, err := s.dst.Get(ctx, snapshotKey); err == nil {
+			content, err := io.ReadAll(reader)
+			reader.Close()
+			if err == nil && len(content) > 0 {
+				if err := s.verifyChecksum(ctx, snapshotKey, content); err == nil {
+					var status FilesStatus
+					if json.Unmarshal(content, &status) == nil {
+						status.sort()
+						return &status, nil
+					}
+				}
+			}
+		}
+		return NewFilesStatus(), nil
+	}
+
+	// Legacy: Load from single JSON file
 	key := statusKey(host, "files.json")
 	reader, err := s.dst.Get(ctx, key)
 	if err != nil {
@@ -232,11 +383,11 @@ func (s *Store) LoadFiles(ctx context.Context, host string) (*FilesStatus, error
 	if err != nil {
 		return nil, err
 	}
-	if err := s.verifyChecksum(ctx, key, content); err != nil {
-		return nil, err
-	}
 	if len(content) == 0 {
 		return NewFilesStatus(), nil
+	}
+	if err := s.verifyChecksum(ctx, key, content); err != nil {
+		return nil, err
 	}
 	var status FilesStatus
 	if err := json.Unmarshal(content, &status); err != nil {
@@ -250,11 +401,39 @@ func (s *Store) SaveFiles(ctx context.Context, host string, status *FilesStatus)
 	if status == nil {
 		return errors.New("files status is nil")
 	}
+
+	// If WORM mode and log store enabled, use append-only logs
+	if s.wormMode && s.logStore != nil && s.logStore.enabled {
+		// Append only the latest file backup (new entries only)
+		if len(status.Backups) > 0 {
+			latest := status.Backups[len(status.Backups)-1]
+			if err := s.logStore.AppendFile(ctx, latest); err != nil {
+				return err
+			}
+		}
+		// Save snapshot
+		return s.saveFilesSnapshot(ctx, host, status)
+	}
+
+	// Legacy: Single JSON file
 	payload, err := json.MarshalIndent(status, "", "  ")
 	if err != nil {
 		return err
 	}
 	key := statusKey(host, "files.json")
+	if err := s.dst.Put(ctx, key, bytesReader(payload)); err != nil {
+		return err
+	}
+	return s.writeChecksum(ctx, key, payload)
+}
+
+// saveFilesSnapshot saves a snapshot of the files status.
+func (s *Store) saveFilesSnapshot(ctx context.Context, host string, status *FilesStatus) error {
+	payload, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return err
+	}
+	key := statusKey(host, "files.snapshot.json")
 	if err := s.dst.Put(ctx, key, bytesReader(payload)); err != nil {
 		return err
 	}

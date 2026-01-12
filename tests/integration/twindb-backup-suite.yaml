@@ -42,9 +42,9 @@ encryption:
     binary: gpg
 
 destination:
-  kind: ssh
+  kind: xbcloud
   provider: s3
-  remote_path: /data/backups
+  remote_path: /backups/mysql
   keep_local_path: ""
 
 s3:
@@ -95,3 +95,6 @@ metrics:
 
 verify:
   depth_bytes: 4096
+
+worm:
+  enabled: false  # Disable WORM for integration tests to allow file overwrites

@@ -19,5 +19,7 @@ func loadStatusStore(ctx context.Context, configPath string) (*status.Store, str
 		return nil, "", err
 	}
 	host, _ := os.Hostname()
-	return status.NewStore(dst), host, nil
+	// Respect worm.enabled configuration
+	wormEnabled := cfg.IsWORMEnabled()
+	return status.NewStoreWithWORM(dst, wormEnabled, host), host, nil
 }

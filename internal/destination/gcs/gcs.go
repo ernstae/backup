@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"path"
 	"strings"
@@ -51,6 +52,13 @@ func (d *Destination) Put(ctx context.Context, key string, r io.Reader) error {
 }
 
 func (d *Destination) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	checkCmd := exec.CommandContext(ctx, d.cfg.Binary, "stat", d.objectURL(key))
+	checkCmd.Env = d.env()
+	var checkErr bytes.Buffer
+	checkCmd.Stderr = &checkErr
+	if err := checkCmd.Run(); err != nil {
+		return nil, os.ErrNotExist
+	}
 	cmd := exec.CommandContext(ctx, d.cfg.Binary, "cat", d.objectURL(key))
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
